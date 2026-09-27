@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import toast from 'react-hot-toast'
 import { FiArrowLeft, FiAlertTriangle, FiLink, FiSave, FiTrash2 } from 'react-icons/fi'
+import ConfirmationDialog from './ConfirmationDialog.jsx'
+import FeedbackState from './FeedbackState.jsx'
 
 const inputClass = 'mt-1.5 h-11 w-full rounded-md border border-[#303647] bg-[#191d28] px-3 text-white outline-none focus:border-blue-500'
 
@@ -7,6 +10,7 @@ export default function ApplicationSettings({ application, applicationId, onBack
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [monitoringEnabled, setMonitoringEnabled] = useState(application.monitoringEnabled !== false)
+  const [confirmation, setConfirmation] = useState(null)
 
   function handleSubmit(event) {
     event.preventDefault()
@@ -19,15 +23,24 @@ export default function ApplicationSettings({ application, applicationId, onBack
     })
     setSaved(didSave)
     setError(didSave ? '' : 'Settings could not be saved in browser storage.')
+    if (didSave) toast.success('Application settings saved.')
+    else toast.error('Settings could not be saved.')
   }
 
-  function confirmAction(message, action, onSuccess) {
-    if (!window.confirm(message)) return
-    if (!action()) {
+  function confirmAction({ title, message, confirmLabel, action, successMessage, onSuccess, destructive }) {
+    setConfirmation({ title, message, confirmLabel, action, successMessage, onSuccess, destructive })
+  }
+
+  function handleConfirm() {
+    if (!confirmation.action()) {
       setError('The application could not be updated in browser storage.')
+      toast.error('The application could not be updated.')
+      setConfirmation(null)
       return
     }
-    onSuccess?.()
+    toast.success(confirmation.successMessage)
+    confirmation.onSuccess?.()
+    setConfirmation(null)
   }
 
   return (
@@ -77,8 +90,8 @@ export default function ApplicationSettings({ application, applicationId, onBack
         </section>
 
         <div className="flex flex-wrap items-center justify-end gap-3">
-          {error && <p className="mr-auto text-sm text-rose-300" role="alert">{error}</p>}
-          {!error && saved && <p className="mr-auto text-sm text-emerald-400" role="status">Settings saved.</p>}
+          {error && <FeedbackState compact message={error} title={error} variant="error" />}
+          {!error && saved && <FeedbackState compact title="Settings saved." variant="success" />}
           <button className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500" type="submit"><FiSave />Save settings</button>
         </div>
       </form>
@@ -91,14 +104,15 @@ export default function ApplicationSettings({ application, applicationId, onBack
         <div className="mt-5 divide-y divide-rose-950/80">
           <div className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0">
             <div><h3 className="text-sm font-medium text-white">Disconnect application</h3><p className="mt-1 text-sm text-slate-400">Stop monitoring this application. It will remain in your list.</p></div>
-            <button className="inline-flex h-9 items-center gap-2 rounded-md border border-rose-800 px-3 text-sm font-medium text-rose-300 hover:bg-rose-950/60" onClick={() => confirmAction(`Stop monitoring ${application.name}?`, onDisconnect, () => setMonitoringEnabled(false))} type="button"><FiLink />Disconnect</button>
+            <button className="inline-flex h-9 items-center gap-2 rounded-md border border-rose-800 px-3 text-sm font-medium text-rose-300 hover:bg-rose-950/60" onClick={() => confirmAction({ title: 'Disconnect application?', message: `Monitoring for ${application.name} will stop, but the application will remain in your list.`, confirmLabel: 'Disconnect', action: onDisconnect, successMessage: 'Application monitoring disconnected.', onSuccess: () => setMonitoringEnabled(false), destructive: true })} type="button"><FiLink />Disconnect</button>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-4 py-4 pb-0">
             <div><h3 className="text-sm font-medium text-white">Delete application</h3><p className="mt-1 text-sm text-slate-400">Remove this application and its saved settings from this dashboard.</p></div>
-            <button className="inline-flex h-9 items-center gap-2 rounded-md bg-rose-700 px-3 text-sm font-semibold text-white hover:bg-rose-600" onClick={() => confirmAction(`Permanently remove ${application.name} from this dashboard?`, onDelete)} type="button"><FiTrash2 />Delete</button>
+            <button className="inline-flex h-9 items-center gap-2 rounded-md bg-rose-700 px-3 text-sm font-semibold text-white hover:bg-rose-600" onClick={() => confirmAction({ title: 'Delete application?', message: `${application.name} and its saved settings will be removed from this dashboard. This cannot be undone.`, confirmLabel: 'Delete application', action: onDelete, successMessage: 'Application deleted.', destructive: true })} type="button"><FiTrash2 />Delete</button>
           </div>
         </div>
       </section>
+      {confirmation && <ConfirmationDialog {...confirmation} onCancel={() => setConfirmation(null)} onConfirm={handleConfirm} />}
     </section>
   )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import toast from 'react-hot-toast'
 import {
   FiActivity,
   FiArrowLeft,
@@ -11,6 +12,7 @@ import {
   FiHardDrive,
   FiHome,
   FiLogOut,
+  FiMenu,
   FiPlus,
   FiSearch,
   FiSettings,
@@ -21,6 +23,7 @@ import { getDemoSession } from '../services/auth.js'
 import ApplicationSettings from '../components/ApplicationSettings.jsx'
 import ApplicationLogs from '../components/ApplicationLogs.jsx'
 import SettingsPage from '../components/SettingsPage.jsx'
+import FeedbackState from '../components/FeedbackState.jsx'
 
 const SAMPLE_APPLICATIONS = [
   { id: 'research-api', name: 'Research API', provider: 'AWS', region: 'us-east-1', status: 'Healthy', cpu: 32, memory: 48, requests: '12.4K', errors: '0.2%', updated: '2 min ago' },
@@ -103,7 +106,7 @@ function ApplicationRow({ application, onView }) {
   const statusDot = isHealthy ? 'bg-emerald-400' : application.status === 'Warning' || application.status === 'Down' ? 'bg-amber-400' : 'bg-slate-400'
 
   return (
-    <article className="grid gap-4 rounded-lg border border-[#242a3a] bg-[#0b0d14] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5">
+    <article className="grid gap-4 rounded-lg border border-[#242a3a] bg-[#0b0d14] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:px-5">
       <div className="flex min-w-0 items-center gap-4">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-md bg-blue-600 text-xl text-white"><FiActivity /></span>
         <div className="min-w-0">
@@ -215,6 +218,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
   const activePage = path === '/alerts' ? 'Alerts' : path === '/settings' || applicationSettingsRoute ? 'Settings' : path === '/applications' || applicationRoute ? 'Applications' : 'Dashboard'
   const [query, setQuery] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [applications, setApplications] = useState(loadApplications)
   const [showAddApplication, setShowAddApplication] = useState(false)
   const [addError, setAddError] = useState('')
@@ -233,6 +237,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
     const name = formData.get('name').trim()
     if (applications.some((application) => application.name.toLowerCase() === name.toLowerCase())) {
       setAddError('An application with this name is already listed.')
+      toast.error('An application with this name is already listed.')
       return
     }
 
@@ -253,6 +258,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
       window.localStorage.setItem(APPLICATIONS_KEY, JSON.stringify([...savedApplications, application]))
     } catch {
       setAddError('Could not save this application in browser storage.')
+      toast.error('Could not save the application.')
       return
     }
 
@@ -261,6 +267,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
     setAddError('')
     setShowAddApplication(false)
     onNavigate('/applications')
+    toast.success(`${name} added to Applications.`)
   }
 
   function updateApplicationSettings(id, changes) {
@@ -319,26 +326,31 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
   }
 
   return (
-    <main className="min-h-screen bg-black text-slate-100 lg:flex">
-      <aside className="flex w-full shrink-0 flex-col border-b border-[#202535] bg-[#080a10] lg:min-h-screen lg:w-60 lg:border-b-0 lg:border-r">
-        <a className="flex h-16 items-center gap-3 border-b border-[#202535] px-5" href="/dashboard" aria-label="DevPulse dashboard" onClick={(event) => { event.preventDefault(); onNavigate('/dashboard') }}>
-          <img className="size-10 rounded-md object-cover" src="/favicon.png" alt="DevPulse" />
-          <span className="font-semibold tracking-normal text-white">DevPulse</span>
-        </a>
-        <nav className="grid grid-cols-4 gap-1 p-2 sm:gap-2 sm:p-3 lg:flex lg:flex-col lg:gap-1 lg:p-4" aria-label="Main navigation">
+    <main className="min-h-screen bg-black text-slate-100 md:flex">
+      {mobileNavOpen && <button aria-label="Close navigation menu" className="fixed inset-0 z-30 bg-black/70 md:hidden" onClick={() => setMobileNavOpen(false)} type="button" />}
+      <aside className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-64 shrink-0 flex-col border-r border-[#202535] bg-[#080a10] transition-transform duration-200 md:static md:z-auto md:h-auto md:min-h-screen md:w-60 md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`} id="mobile-navigation">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#202535] px-5">
+          <a className="flex items-center gap-3" href="/dashboard" aria-label="DevPulse dashboard" onClick={(event) => { event.preventDefault(); setMobileNavOpen(false); onNavigate('/dashboard') }}>
+            <img className="size-10 rounded-md object-cover" src="/favicon.png" alt="DevPulse" />
+            <span className="font-semibold tracking-normal text-white">DevPulse</span>
+          </a>
+          <button aria-label="Close navigation menu" className="rounded-md p-2 text-slate-400 hover:bg-[#171b26] hover:text-white md:hidden" onClick={() => setMobileNavOpen(false)} type="button"><FiX /></button>
+        </div>
+        <nav className="flex flex-col gap-1 p-4" aria-label="Main navigation">
           {navigation.map(({ label, icon: Icon }) => (
-            <button key={label} className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-medium transition-colors sm:flex-row sm:gap-3 sm:px-3 sm:py-2.5 sm:text-sm lg:justify-start ${activePage === label ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-[#171b26] hover:text-white'}`} onClick={() => onNavigate(label === 'Dashboard' ? '/dashboard' : `/${label.toLowerCase()}`)} type="button">
+            <button key={label} className={`relative flex min-w-0 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${activePage === label ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-[#171b26] hover:text-white'}`} onClick={() => { setMobileNavOpen(false); onNavigate(label === 'Dashboard' ? '/dashboard' : `/${label.toLowerCase()}`) }} type="button">
               <Icon className="text-lg" /><span className="whitespace-nowrap">{label}</span>
-              {label === 'Alerts' && alertCount > 0 && <span className="rounded bg-rose-500/20 px-1.5 py-0.5 text-xs text-rose-300 sm:ml-auto">{alertCount}</span>}
+              {label === 'Alerts' && alertCount > 0 && <span className="ml-auto rounded bg-rose-500/20 px-1.5 py-0.5 text-xs text-rose-300">{alertCount}</span>}
             </button>
           ))}
         </nav>
-        <div className="mt-auto hidden border-t border-[#202535] p-4 text-xs text-slate-500 lg:block">Self-hosted monitoring · Demo data</div>
+        <div className="mt-auto border-t border-[#202535] p-4 text-xs text-slate-500">Self-hosted monitoring · Demo data</div>
       </aside>
 
       <section className="min-w-0 flex-1">
         <header className="flex min-h-16 items-center justify-between gap-4 border-b border-[#202535] bg-[#080a10] px-4 sm:px-7">
-          <label className="flex h-10 w-full max-w-md items-center gap-2 rounded-md border border-[#252b3b] bg-[#10131d] px-3 text-slate-400 focus-within:border-blue-500">
+          <button aria-controls="mobile-navigation" aria-expanded={mobileNavOpen} aria-label="Open navigation menu" className="flex size-10 shrink-0 items-center justify-center rounded-md text-slate-300 hover:bg-[#171b26] md:hidden" onClick={() => setMobileNavOpen(true)} type="button"><FiMenu className="text-xl" /></button>
+          <label className="flex h-10 min-w-0 w-full max-w-md flex-1 items-center gap-2 rounded-md border border-[#252b3b] bg-[#10131d] px-3 text-slate-400 focus-within:border-blue-500">
             <FiSearch />
             <input className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500" onChange={(event) => setQuery(event.target.value)} placeholder="Search applications..." type="search" value={query} />
           </label>
@@ -367,7 +379,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
           {selectedApplication && !applicationSettingsRoute ? (
             <ApplicationDetails application={selectedApplication} onBack={() => onNavigate('/applications')} onSettings={() => onNavigate(`/applications/${applicationId}/settings`)} />
           ) : !selectedApplication && activePage !== 'Settings' && (
-            <div className="mb-8 grid gap-3 sm:grid-cols-3">
+            <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Metric label="Applications" value={applications.length} icon={FiGrid} tone="blue" />
               <Metric label="Healthy" value={healthyCount} icon={FiCheckCircle} tone="green" />
               <Metric label="Active alerts" value={alertCount} icon={FiBell} tone="red" />
@@ -388,16 +400,16 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
             />
           ) : !selectedApplication && (
             <section aria-labelledby="applications-title">
-              <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="mb-4 grid gap-3 sm:flex sm:items-center sm:justify-between">
                 <h2 className="font-sans text-xl font-semibold text-white" id="applications-title">{activePage === 'Alerts' ? 'Applications needing attention' : 'Applications'}</h2>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-slate-500">{filteredApplications.length} shown</span>
-                  {activePage === 'Applications' && <button className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 sm:px-4" onClick={() => { setAddError(''); setShowAddApplication(true) }} type="button"><FiPlus />Add application</button>}
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="shrink-0 text-sm text-slate-500">{filteredApplications.length} shown</span>
+                  {activePage === 'Applications' && <button className="inline-flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 sm:h-10 sm:flex-none" onClick={() => { setAddError(''); setShowAddApplication(true) }} type="button"><FiPlus />Add application</button>}
                 </div>
               </div>
               <div className="space-y-3">
                 {filteredApplications.map((application) => <ApplicationRow application={application} key={application.name} onView={(app) => onNavigate(`/applications/${getApplicationId(app)}`)} />)}
-                {filteredApplications.length === 0 && <p className="rounded-lg border border-[#242a3a] bg-[#0b0d14] px-5 py-8 text-center text-sm text-slate-400">No applications match this search.</p>}
+                {filteredApplications.length === 0 && <FeedbackState title={applications.length === 0 ? 'No applications yet' : 'No matching applications'} message={applications.length === 0 ? 'Add an application to begin monitoring.' : 'Try another application name, provider, or status.'} />}
               </div>
             </section>
           )}
@@ -429,7 +441,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
                 <input className="mt-1.5 h-11 w-full rounded-md border border-[#303647] bg-[#191d28] px-3 text-white outline-none focus:border-blue-500" id="application-region" name="region" placeholder="us-east-1" />
               </label>
               <p className="text-xs leading-5 text-slate-400">The app will be saved as Pending setup. Live health and performance checks require a monitoring backend.</p>
-              {addError && <p className="text-sm text-rose-300" role="alert">{addError}</p>}
+              {addError && <FeedbackState compact title={addError} variant="error" />}
               <div className="flex justify-end gap-2 pt-1">
                 <button className="h-10 rounded-md border border-[#303647] px-4 text-sm font-medium text-slate-300 hover:bg-[#202535]" onClick={() => setShowAddApplication(false)} type="button">Cancel</button>
                 <button className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500" type="submit"><FiPlus />Add application</button>

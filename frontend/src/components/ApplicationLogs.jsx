@@ -52,7 +52,7 @@ export default function ApplicationLogs({ application }) {
           {visibleLogs.map((entry) => {
             const { icon: Icon, className } = levelStyles[entry.level]
             return (
-              <li className="grid gap-2 px-5 py-3 sm:grid-cols-[100px_68px_150px_minmax(0,1fr)] sm:items-start" key={`${entry.time}-${entry.source}`}>
+              <li className="grid gap-2 px-5 py-3 lg:grid-cols-[100px_68px_150px_minmax(0,1fr)] lg:items-start" key={`${entry.time}-${entry.source}`}>
                 <time className="text-xs text-slate-500">{entry.time}</time>
                 <span className={`inline-flex items-center gap-1 text-xs font-semibold ${className}`}><Icon />{entry.level}</span>
                 <span className="text-xs text-slate-400">{entry.source}</span>
