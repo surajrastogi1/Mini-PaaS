@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import logoMark from '../assets/hero.png'
 import { registerDemoUser } from '../services/auth.js'
 import { FcGoogle } from 'react-icons/fc';
 import { FaGithub } from 'react-icons/fa';

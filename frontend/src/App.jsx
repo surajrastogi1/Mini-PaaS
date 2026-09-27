@@ -5,11 +5,15 @@ import RegisterPage from './pages/RegisterPage.jsx'
 import { clearDemoSession, getDemoSession } from './services/auth.js'
 
 function getCurrentPath() {
-  if (window.location.pathname === '/dashboard' && !getDemoSession()) {
+  const path = window.location.pathname
+  const protectedPath = ['/dashboard', '/applications', '/alerts', '/settings'].includes(path)
+    || path.startsWith('/applications/')
+
+  if (protectedPath && !getDemoSession()) {
     window.history.replaceState({}, '', '/login')
     return '/login'
   }
-  return window.location.pathname
+  return path
 }
 
 function App() {
@@ -27,8 +31,8 @@ function App() {
   }
 
   if (path === '/register') return <RegisterPage onNavigate={navigate} />
-  if (path === '/dashboard' && getDemoSession()) {
-    return <Dashboard onLogout={() => { clearDemoSession(); navigate('/login') }} />
+  if (['/dashboard', '/applications', '/alerts', '/settings'].includes(path) || path.startsWith('/applications/')) {
+    return <Dashboard path={path} onNavigate={navigate} onLogout={() => { clearDemoSession(); navigate('/login') }} />
   }
   return <LoginPage onNavigate={navigate} />
 }
