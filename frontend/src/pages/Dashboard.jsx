@@ -5,7 +5,6 @@ import {
   FiBell,
   FiCheckCircle,
   FiChevronDown,
-  FiCloud,
   FiCpu,
   FiExternalLink,
   FiGrid,
@@ -19,6 +18,9 @@ import {
   FiX,
 } from 'react-icons/fi'
 import { getDemoSession } from '../services/auth.js'
+import ApplicationSettings from '../components/ApplicationSettings.jsx'
+import ApplicationLogs from '../components/ApplicationLogs.jsx'
+import SettingsPage from '../components/SettingsPage.jsx'
 
 const SAMPLE_APPLICATIONS = [
   { id: 'research-api', name: 'Research API', provider: 'AWS', region: 'us-east-1', status: 'Healthy', cpu: 32, memory: 48, requests: '12.4K', errors: '0.2%', updated: '2 min ago' },
@@ -28,6 +30,8 @@ const SAMPLE_APPLICATIONS = [
   { id: 'docs-portal', name: 'Docs Portal', provider: 'Vercel', region: 'Global', status: 'Healthy', cpu: 12, memory: 29, updated: '5 min ago' },
 ]
 const APPLICATIONS_KEY = 'devpulse-monitored-applications'
+const APPLICATION_SETTINGS_KEY = 'devpulse-application-settings'
+const DELETED_APPLICATIONS_KEY = 'devpulse-deleted-applications'
 
 function getApplicationId(application) {
   return application.id || application.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -40,6 +44,32 @@ function loadSavedApplications() {
   } catch {
     return []
   }
+}
+
+function loadApplicationSettings() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(APPLICATION_SETTINGS_KEY) || '{}')
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}
+  } catch {
+    return {}
+  }
+}
+
+function loadDeletedApplicationIds() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(DELETED_APPLICATIONS_KEY) || '[]')
+    return Array.isArray(saved) ? saved : []
+  } catch {
+    return []
+  }
+}
+
+function loadApplications() {
+  const settings = loadApplicationSettings()
+  const deletedIds = new Set(loadDeletedApplicationIds())
+  return [...SAMPLE_APPLICATIONS, ...loadSavedApplications()]
+    .filter((application) => !deletedIds.has(getApplicationId(application)))
+    .map((application) => ({ ...application, ...settings[getApplicationId(application)] }))
 }
 
 const navigation = [
@@ -121,12 +151,13 @@ function UsageChart({ title, value, color, points }) {
   )
 }
 
-function ApplicationDetails({ application, onBack }) {
-  const isConnected = Number.isFinite(application.cpu) && Number.isFinite(application.memory)
+function ApplicationDetails({ application, onBack, onSettings }) {
+  const monitoringEnabled = application.monitoringEnabled !== false
+  const isConnected = monitoringEnabled && Number.isFinite(application.cpu) && Number.isFinite(application.memory)
   const statusClass = application.status === 'Healthy' ? 'text-emerald-400' : application.status === 'Pending setup' ? 'text-slate-300' : 'text-amber-400'
   const metrics = [
-    { label: 'CPU', value: Number.isFinite(application.cpu) ? `${application.cpu}%` : 'Not connected', icon: FiCpu },
-    { label: 'Memory', value: Number.isFinite(application.memory) ? `${application.memory}%` : 'Not connected', icon: FiHardDrive },
+    { label: 'CPU', value: isConnected ? `${application.cpu}%` : 'Not connected', icon: FiCpu },
+    { label: 'Memory', value: isConnected ? `${application.memory}%` : 'Not connected', icon: FiHardDrive },
     { label: 'Requests', value: application.requests || 'Not connected', icon: FiActivity },
     { label: 'Errors', value: application.errors || 'Not connected', icon: FiBell },
   ]
@@ -143,7 +174,10 @@ function ApplicationDetails({ application, onBack }) {
             {application.status}<span className="text-slate-500">· {application.provider} · {application.region}</span>
           </p>
         </div>
-        <span className="rounded border border-[#303647] bg-[#11141d] px-2 py-1 text-xs text-slate-400">Demo monitoring data</span>
+        <div className="flex items-center gap-3">
+          <span className="rounded border border-[#303647] bg-[#11141d] px-2 py-1 text-xs text-slate-400">Demo monitoring data</span>
+          <button className="inline-flex h-9 items-center gap-2 rounded-md border border-[#303647] px-3 text-sm text-slate-300 hover:bg-[#171b26]" onClick={onSettings} type="button"><FiSettings />Settings</button>
+        </div>
       </div>
 
       <div className="mb-7 grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -167,6 +201,7 @@ function ApplicationDetails({ application, onBack }) {
           {application.endpoint && <p className="mt-3 break-all text-sm text-blue-300">Health endpoint: {application.endpoint}</p>}
         </section>
       )}
+      <ApplicationLogs application={application} />
       <p className="mt-4 text-xs text-slate-500">Sample figures and chart history are illustrative only; live metrics require a monitoring backend.</p>
     </div>
   )
@@ -174,13 +209,16 @@ function ApplicationDetails({ application, onBack }) {
 
 export default function Dashboard({ path, onNavigate, onLogout }) {
   const session = getDemoSession()
-  const activePage = path === '/alerts' ? 'Alerts' : path === '/settings' ? 'Settings' : path === '/applications' || path.startsWith('/applications/') ? 'Applications' : 'Dashboard'
+  const routeParts = path.split('/').filter(Boolean)
+  const applicationRoute = routeParts[0] === 'applications' && routeParts.length > 1
+  const applicationSettingsRoute = applicationRoute && routeParts[2] === 'settings'
+  const activePage = path === '/alerts' ? 'Alerts' : path === '/settings' || applicationSettingsRoute ? 'Settings' : path === '/applications' || applicationRoute ? 'Applications' : 'Dashboard'
   const [query, setQuery] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
-  const [applications, setApplications] = useState(() => [...SAMPLE_APPLICATIONS, ...loadSavedApplications()])
+  const [applications, setApplications] = useState(loadApplications)
   const [showAddApplication, setShowAddApplication] = useState(false)
   const [addError, setAddError] = useState('')
-  const applicationId = path.startsWith('/applications/') ? decodeURIComponent(path.slice('/applications/'.length)) : null
+  const applicationId = applicationRoute ? decodeURIComponent(routeParts[1]) : null
   const selectedApplication = applications.find((application) => getApplicationId(application) === applicationId)
   const healthyCount = applications.filter((app) => app.status === 'Healthy').length
   const alertCount = applications.filter((app) => app.status === 'Warning' || app.status === 'Down').length
@@ -199,6 +237,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
     }
 
     const application = {
+      id: window.crypto.randomUUID(),
       name,
       provider: formData.get('provider'),
       endpoint: formData.get('endpoint').trim(),
@@ -222,6 +261,61 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
     setAddError('')
     setShowAddApplication(false)
     onNavigate('/applications')
+  }
+
+  function updateApplicationSettings(id, changes) {
+    const currentApplication = applications.find((application) => getApplicationId(application) === id)
+    const savedChanges = { ...changes }
+
+    if (changes.monitoringEnabled === false && !changes.status) {
+      savedChanges.status = currentApplication.status === 'Disconnected' ? 'Disconnected' : 'Monitoring disabled'
+      savedChanges.updated = 'Monitoring paused'
+    } else if (changes.monitoringEnabled === true && currentApplication.monitoringEnabled === false) {
+      savedChanges.status = 'Pending setup'
+      savedChanges.updated = 'Waiting for first check'
+    }
+
+    try {
+      const settings = loadApplicationSettings()
+      window.localStorage.setItem(APPLICATION_SETTINGS_KEY, JSON.stringify({ ...settings, [id]: { ...settings[id], ...savedChanges } }))
+      const savedApplications = loadSavedApplications().map((application) => getApplicationId(application) === id
+        ? { ...application, id, ...savedChanges }
+        : application)
+      window.localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(savedApplications))
+    } catch {
+      return false
+    }
+
+    setApplications((current) => current.map((application) => getApplicationId(application) === id
+      ? { ...application, id, ...savedChanges }
+      : application))
+    return true
+  }
+
+  function disconnectApplication(id) {
+    return updateApplicationSettings(id, {
+      monitoringEnabled: false,
+      status: 'Disconnected',
+      updated: 'Monitoring disconnected',
+    })
+  }
+
+  function deleteApplication(id) {
+    try {
+      const deletedIds = new Set(loadDeletedApplicationIds())
+      deletedIds.add(id)
+      window.localStorage.setItem(DELETED_APPLICATIONS_KEY, JSON.stringify([...deletedIds]))
+      window.localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(loadSavedApplications().filter((application) => getApplicationId(application) !== id)))
+      const settings = loadApplicationSettings()
+      delete settings[id]
+      window.localStorage.setItem(APPLICATION_SETTINGS_KEY, JSON.stringify(settings))
+    } catch {
+      return false
+    }
+
+    setApplications((current) => current.filter((application) => getApplicationId(application) !== id))
+    onNavigate('/settings')
+    return true
   }
 
   return (
@@ -270,9 +364,9 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
             <p className="inline-flex items-center gap-2 text-xs text-slate-500"><span className="size-2 rounded-full bg-emerald-400" /><FiCheckCircle className="text-emerald-400" />Monitoring active</p>
           </div>}
 
-          {selectedApplication ? (
-            <ApplicationDetails application={selectedApplication} onBack={() => onNavigate('/applications')} />
-          ) : activePage !== 'Settings' && (
+          {selectedApplication && !applicationSettingsRoute ? (
+            <ApplicationDetails application={selectedApplication} onBack={() => onNavigate('/applications')} onSettings={() => onNavigate(`/applications/${applicationId}/settings`)} />
+          ) : !selectedApplication && activePage !== 'Settings' && (
             <div className="mb-8 grid gap-3 sm:grid-cols-3">
               <Metric label="Applications" value={applications.length} icon={FiGrid} tone="blue" />
               <Metric label="Healthy" value={healthyCount} icon={FiCheckCircle} tone="green" />
@@ -281,13 +375,17 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
           )}
 
           {!selectedApplication && activePage === 'Settings' ? (
-            <section className="rounded-lg border border-[#242a3a] bg-[#0b0d14] p-5 sm:p-6">
-              <h2 className="text-lg font-semibold text-white">Monitoring workspace</h2>
-              <p className="mt-2 text-sm text-slate-400">Application data on this screen is sample content. Connect a monitoring API to display live status from AWS, Render, Vercel, or another provider.</p>
-              <div className="mt-5 flex flex-wrap gap-2 text-sm text-slate-300">
-                {['AWS', 'Render', 'Vercel'].map((provider) => <span className="inline-flex items-center gap-2 rounded-md border border-[#303647] bg-[#11141d] px-3 py-2" key={provider}><FiCloud className="text-blue-300" />{provider}</span>)}
-              </div>
-            </section>
+            <SettingsPage applications={applications} onSelectApplication={(application) => onNavigate(`/applications/${getApplicationId(application)}/settings`)} />
+          ) : selectedApplication && applicationSettingsRoute ? (
+            <ApplicationSettings
+              key={applicationId}
+              application={selectedApplication}
+              applicationId={applicationId}
+              onBack={() => onNavigate('/settings')}
+              onSave={(changes) => updateApplicationSettings(applicationId, changes)}
+              onDisconnect={() => disconnectApplication(applicationId)}
+              onDelete={() => deleteApplication(applicationId)}
+            />
           ) : !selectedApplication && (
             <section aria-labelledby="applications-title">
               <div className="mb-4 flex items-center justify-between gap-3">
