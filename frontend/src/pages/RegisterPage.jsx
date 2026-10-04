@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { registerDemoUser } from '../services/auth.js'
-import { FcGoogle } from 'react-icons/fc';
-import { FaGithub } from 'react-icons/fa';
+import { registerUser } from '../services/auth.js'
+import OAuthButtons from '../components/OAuthButtons.jsx'
 
 export default function RegisterPage({ onNavigate }) {
   const [name, setName] = useState('')
@@ -9,9 +8,9 @@ export default function RegisterPage({ onNavigate }) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     setError('')
     if (password !== confirmPassword) {
@@ -19,16 +18,15 @@ export default function RegisterPage({ onNavigate }) {
       return
     }
 
-    const result = registerDemoUser({ name, email, password })
-    if (!result.ok) {
-      setError(result.error)
-      return
+    setSubmitting(true)
+    try {
+      await registerUser({ name, email, password })
+      onNavigate('/dashboard')
+    } catch (registrationError) {
+      setError(registrationError.message)
+    } finally {
+      setSubmitting(false)
     }
-    onNavigate('/dashboard')
-  }
-
-  function showOAuthNotice() {
-    setNotice('Google and GitHub sign-in are not connected in this demo.')
   }
 
   return (
@@ -48,10 +46,7 @@ export default function RegisterPage({ onNavigate }) {
         <h1 className="mt-1 font-[Space_Grotesk] text-3xl font-semibold">Get started</h1>
         <p className="mt-2 text-sm text-muted">Set up an account for your DevPulse workspace.</p>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols">
-          <button className="h-11 rounded-md border border-line bg-[#242129] flex justify-center items-center text-sm font-semibold text-ink hover:bg-[#302c37] gap-3" onClick={showOAuthNotice} type="button"><FcGoogle /> Continue with Google</button> 
-          <button className="h-11 rounded-md border border-line bg-[#242129] flex justify-center items-center gap-3 text-sm font-semibold text-ink hover:bg-[#302c37]" onClick={showOAuthNotice} type="button"><FaGithub /> Continue with GitHub</button>
-        </div>
+        <div className="mt-6"><OAuthButtons /></div>
         <div className="my-6 flex items-center gap-4 text-xs text-muted">
           <span className="h-px flex-1 bg-line" />
           <span>OR REGISTER WITH EMAIL</span>
@@ -76,8 +71,7 @@ export default function RegisterPage({ onNavigate }) {
             <input className="mt-1.5 h-11 w-full rounded-md border border-line bg-[#242129] px-3 font-normal text-ink outline-none focus:border-violet focus:ring-2 focus:ring-violet/15" id="register-confirm-password" autoComplete="new-password" minLength="8" onChange={(event) => setConfirmPassword(event.target.value)} required type="password" value={confirmPassword} />
           </label>
           {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
-          {notice && <p className="text-sm text-muted" role="status">{notice}</p>}
-          <button className="h-11 w-full rounded-md bg-violet px-4 text-sm font-semibold text-white hover:bg-violet-dark focus:outline-none focus:ring-2 focus:ring-violet focus:ring-offset-2 focus:ring-offset-paper" type="submit">Create account</button>
+          <button className="h-11 w-full rounded-md bg-violet px-4 text-sm font-semibold text-white hover:bg-violet-dark focus:outline-none focus:ring-2 focus:ring-violet focus:ring-offset-2 focus:ring-offset-paper disabled:cursor-wait disabled:opacity-60" disabled={submitting} type="submit">{submitting ? 'Creating account...' : 'Create account'}</button>
         </form>
       </section>
     </main>

@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react'
 import { Toaster } from 'react-hot-toast'
 import Dashboard from './pages/Dashboard.jsx'
 import LoginPage from './pages/LoginPage.jsx'
+import OAuthCallbackPage from './pages/OAuthCallbackPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
-import { clearDemoSession, getDemoSession } from './services/auth.js'
+import { clearAuthSession, getAuthSession } from './services/auth.js'
 
 function getCurrentPath() {
   const path = window.location.pathname
   const protectedPath = ['/dashboard', '/applications', '/alerts', '/settings'].includes(path)
     || path.startsWith('/applications/')
 
-  if (protectedPath && !getDemoSession()) {
+  if (protectedPath && !getAuthSession()) {
     window.history.replaceState({}, '', '/login')
     return '/login'
   }
@@ -32,9 +33,11 @@ function App() {
   }
 
   let page
-  if (path === '/register') page = <RegisterPage onNavigate={navigate} />
-  if (['/dashboard', '/applications', '/alerts', '/settings'].includes(path) || path.startsWith('/applications/')) {
-    page = <Dashboard path={path} onNavigate={navigate} onLogout={() => { clearDemoSession(); navigate('/login') }} />
+  const oauthCallback = path.match(/^\/auth\/callback\/(google|github)$/)
+  if (oauthCallback) page = <OAuthCallbackPage provider={oauthCallback[1]} onNavigate={navigate} />
+  else if (path === '/register') page = <RegisterPage onNavigate={navigate} />
+  else if (['/dashboard', '/applications', '/alerts', '/settings'].includes(path) || path.startsWith('/applications/')) {
+    page = <Dashboard path={path} onNavigate={navigate} onLogout={() => { clearAuthSession(); navigate('/login') }} />
   }
   if (!page) page = <LoginPage onNavigate={navigate} />
 

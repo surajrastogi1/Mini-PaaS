@@ -19,7 +19,7 @@ import {
   FiUser,
   FiX,
 } from 'react-icons/fi'
-import { getDemoSession } from '../services/auth.js'
+import { getAuthSession } from '../services/auth.js'
 import ApplicationSettings from '../components/ApplicationSettings.jsx'
 import ApplicationLogs from '../components/ApplicationLogs.jsx'
 import SettingsPage from '../components/SettingsPage.jsx'
@@ -211,7 +211,7 @@ function ApplicationDetails({ application, onBack, onSettings }) {
 }
 
 export default function Dashboard({ path, onNavigate, onLogout }) {
-  const session = getDemoSession()
+  const session = getAuthSession()
   const routeParts = path.split('/').filter(Boolean)
   const applicationRoute = routeParts[0] === 'applications' && routeParts.length > 1
   const applicationSettingsRoute = applicationRoute && routeParts[2] === 'settings'
@@ -357,7 +357,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
           <div className="relative shrink-0">
             <button className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-200 hover:bg-[#171b26]" onClick={() => setProfileOpen(!profileOpen)} type="button" aria-expanded={profileOpen}>
               <span className="flex size-8 items-center justify-center rounded-full bg-[#252b3b] text-slate-300"><FiUser /></span>
-              <span className="hidden max-w-32 truncate sm:block">{session?.name || 'User'}</span>
+              <span className="hidden max-w-32 truncate sm:block">{session?.user?.name || session?.user?.email || 'User'}</span>
               <FiChevronDown className="text-slate-400" />
             </button>
             {profileOpen && <button className="absolute right-0 top-12 z-10 flex w-36 items-center gap-2 rounded-md border border-[#303647] bg-[#11141d] px-3 py-2.5 text-left text-sm text-slate-200 shadow-xl hover:bg-[#202535]" onClick={onLogout} type="button"><FiLogOut /> Sign out</button>}
@@ -371,7 +371,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
                 <h1 className="font-sans text-3xl font-semibold text-white">{activePage}</h1>
                 <span className="rounded border border-[#303647] bg-[#11141d] px-2 py-1 text-xs text-slate-400">Demo monitoring data</span>
               </div>
-              <p className="mt-2 text-sm text-slate-400">Welcome back{session?.name ? `, ${session.name}` : ''}. Here is your application status.</p>
+              <p className="mt-2 text-sm text-slate-400">Welcome back{session?.user?.name ? `, ${session.user.name}` : ''}. Here is your application status.</p>
             </div>
             <p className="inline-flex items-center gap-2 text-xs text-slate-500"><span className="size-2 rounded-full bg-emerald-400" /><FiCheckCircle className="text-emerald-400" />Monitoring active</p>
           </div>}

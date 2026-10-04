@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { loginDemoUser } from '../services/auth.js'
-import { FcGoogle } from 'react-icons/fc';
-import { FaGithub } from 'react-icons/fa';
+import { loginUser } from '../services/auth.js'
+import OAuthButtons from '../components/OAuthButtons.jsx'
 
 function BrandPanel() {
   return (
@@ -26,40 +25,24 @@ function BrandPanel() {
   )
 }
 
-function OAuthButtons({ onDemoNotice }) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <button className="flex h-11 items-center justify-center gap-2 rounded-md border border-line bg-[#242129] px-4 text-sm font-semibold text-ink hover:bg-[#302c37]" onClick={onDemoNotice} type="button">
-        <span aria-hidden="true" className="font-bold text-violet"><FcGoogle /></span>
-        Continue with Google
-      </button>
-      <button className="flex h-11 items-center justify-center gap-2 rounded-md border border-line bg-[#242129] px-4 text-sm font-semibold text-ink hover:bg-[#302c37]" onClick={onDemoNotice} type="button">
-        <span aria-hidden="true" className="font-bold"><FaGithub /></span>
-        Continue with GitHub
-      </button>
-    </div>
-  )
-}
-
 export default function LoginPage({ onNavigate }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     setError('')
-    const result = loginDemoUser(email, password)
-    if (!result.ok) {
-      setError(result.error)
-      return
+    setSubmitting(true)
+    try {
+      await loginUser(email, password)
+      onNavigate('/dashboard')
+    } catch (loginError) {
+      setError(loginError.message)
+    } finally {
+      setSubmitting(false)
     }
-    onNavigate('/dashboard')
-  }
-
-  function showOAuthNotice() {
-    setNotice('Google and GitHub sign-in are not connected in this demo.')
   }
 
   return (
@@ -71,7 +54,7 @@ export default function LoginPage({ onNavigate }) {
           <h2 className="mt-1 font-[Space_Grotesk] text-3xl font-semibold">Sign in to DevPulse</h2>
           <p className="mt-2 text-sm text-muted">Use your account to continue to the platform.</p>
 
-          <div className="mt-7"><OAuthButtons onDemoNotice={showOAuthNotice} /></div>
+          <div className="mt-7"><OAuthButtons /></div>
           <div className="my-6 flex items-center gap-4 text-xs text-muted">
             <span className="h-px flex-1 bg-line" />
             <span>OR CONTINUE WITH EMAIL</span>
@@ -88,9 +71,8 @@ export default function LoginPage({ onNavigate }) {
               <input className="mt-1.5 h-11 w-full rounded-md border border-line bg-[#242129] px-3 font-normal text-ink outline-none focus:border-violet focus:ring-2 focus:ring-violet/15" id="login-password" autoComplete="current-password" onChange={(event) => setPassword(event.target.value)} required type="password" value={password} />
             </label>
             {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
-            {notice && <p className="text-sm text-muted" role="status">{notice}</p>}
-            <button className="h-11 w-full rounded-md bg-violet px-4 text-sm font-semibold text-white hover:bg-violet-dark focus:outline-none focus:ring-2 focus:ring-violet focus:ring-offset-2 focus:ring-offset-paper" type="submit">
-              Sign in
+            <button className="h-11 w-full rounded-md bg-violet px-4 text-sm font-semibold text-white hover:bg-violet-dark focus:outline-none focus:ring-2 focus:ring-violet focus:ring-offset-2 focus:ring-offset-paper disabled:cursor-wait disabled:opacity-60" disabled={submitting} type="submit">
+              {submitting ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
 
@@ -98,9 +80,7 @@ export default function LoginPage({ onNavigate }) {
             New to DevPulse?{' '}
             <button className="font-semibold text-violet hover:text-violet-dark" onClick={() => onNavigate('/register')} type="button">Create an account</button>
           </p>
-          <p className="mt-8 border-t border-line pt-4 text-center text-xs leading-5 text-muted">
-            Demo account: <span className="font-semibold text-ink">demo@mini-paas.local</span> / <span className="font-semibold text-ink">DemoPass123!</span>
-          </p>
+          <p className="mt-8 border-t border-line pt-4 text-center text-xs leading-5 text-muted">Sign in with the account registered on this DevPulse API.</p>
         </div>
       </section>
     </main>
