@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   FiActivity,
@@ -24,29 +24,18 @@ import ApplicationSettings from '../components/ApplicationSettings.jsx'
 import ApplicationLogs from '../components/ApplicationLogs.jsx'
 import SettingsPage from '../components/SettingsPage.jsx'
 import FeedbackState from '../components/FeedbackState.jsx'
+import {
+  createApplication,
+  deleteApplication as deleteApplicationRequest,
+  disconnectApplication as disconnectApplicationRequest,
+  listApplications,
+  updateApplication as updateApplicationRequest,
+} from '../services/applications.js'
 
-const SAMPLE_APPLICATIONS = [
-  { id: 'research-api', name: 'Research API', provider: 'AWS', region: 'us-east-1', status: 'Healthy', cpu: 32, memory: 48, requests: '12.4K', errors: '0.2%', updated: '2 min ago' },
-  { id: 'ai-backend', name: 'AI Backend', provider: 'Render', region: 'Oregon', status: 'Warning', cpu: 76, memory: 81, updated: '1 min ago' },
-  { id: 'web-console', name: 'Web Console', provider: 'Vercel', region: 'Global', status: 'Healthy', cpu: 18, memory: 36, updated: '3 min ago' },
-  { id: 'events-worker', name: 'Events Worker', provider: 'AWS', region: 'eu-west-1', status: 'Healthy', cpu: 24, memory: 51, updated: '4 min ago' },
-  { id: 'docs-portal', name: 'Docs Portal', provider: 'Vercel', region: 'Global', status: 'Healthy', cpu: 12, memory: 29, updated: '5 min ago' },
-]
-const APPLICATIONS_KEY = 'devpulse-monitored-applications'
 const APPLICATION_SETTINGS_KEY = 'devpulse-application-settings'
-const DELETED_APPLICATIONS_KEY = 'devpulse-deleted-applications'
 
 function getApplicationId(application) {
-  return application.id || application.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-}
-
-function loadSavedApplications() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(APPLICATIONS_KEY) || '[]')
-    return Array.isArray(saved) ? saved : []
-  } catch {
-    return []
-  }
+  return application.id
 }
 
 function loadApplicationSettings() {
@@ -58,21 +47,29 @@ function loadApplicationSettings() {
   }
 }
 
-function loadDeletedApplicationIds() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(DELETED_APPLICATIONS_KEY) || '[]')
-    return Array.isArray(saved) ? saved : []
-  } catch {
-    return []
+function mapApplication(record, localSettings = {}) {
+  return {
+    id: record.id,
+    name: record.name,
+    url: record.url,
+    endpoint: record.url,
+    provider: localSettings.provider || 'External',
+    region: localSettings.region || 'Not specified',
+    status: record.monitoring_enabled ? 'Monitoring enabled' : 'Disconnected',
+    monitoringEnabled: record.monitoring_enabled,
+    environment: localSettings.environment || 'Production',
+    monitoringInterval: localSettings.monitoringInterval || 5,
+    cpu: null,
+    memory: null,
+    requests: null,
+    errors: null,
+    updated: 'No live check yet',
   }
 }
 
-function loadApplications() {
+function mapApplications(records) {
   const settings = loadApplicationSettings()
-  const deletedIds = new Set(loadDeletedApplicationIds())
-  return [...SAMPLE_APPLICATIONS, ...loadSavedApplications()]
-    .filter((application) => !deletedIds.has(getApplicationId(application)))
-    .map((application) => ({ ...application, ...settings[getApplicationId(application)] }))
+  return records.map((record) => mapApplication(record, settings[record.id]))
 }
 
 const navigation = [
@@ -219,11 +216,37 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
   const [query, setQuery] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [applications, setApplications] = useState(loadApplications)
+  const [applications, setApplications] = useState([])
+  const [applicationsLoading, setApplicationsLoading] = useState(true)
+  const [applicationsError, setApplicationsError] = useState('')
+  const [reloadApplications, setReloadApplications] = useState(0)
   const [showAddApplication, setShowAddApplication] = useState(false)
   const [addError, setAddError] = useState('')
   const applicationId = applicationRoute ? decodeURIComponent(routeParts[1]) : null
   const selectedApplication = applications.find((application) => getApplicationId(application) === applicationId)
+
+  useEffect(() => {
+    let active = true
+    listApplications()
+      .then((records) => {
+        if (active) setApplications(mapApplications(records))
+      })
+      .catch((error) => {
+        if (active) setApplicationsError(error.message)
+      })
+      .finally(() => {
+        if (active) setApplicationsLoading(false)
+      })
+
+    return () => { active = false }
+  }, [reloadApplications])
+
+  function retryLoadingApplications() {
+    setApplicationsError('')
+    setApplicationsLoading(true)
+    setReloadApplications((current) => current + 1)
+  }
+
   const healthyCount = applications.filter((app) => app.status === 'Healthy').length
   const alertCount = applications.filter((app) => app.status === 'Warning' || app.status === 'Down').length
   const visibleApplications = activePage === 'Alerts'
@@ -231,7 +254,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
     : applications
   const filteredApplications = visibleApplications.filter((app) => `${app.name} ${app.provider} ${app.status}`.toLowerCase().includes(query.trim().toLowerCase()))
 
-  function handleAddApplication(event) {
+  async function handleAddApplication(event) {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     const name = formData.get('name').trim()
@@ -241,78 +264,58 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
       return
     }
 
-    const application = {
-      id: window.crypto.randomUUID(),
-      name,
-      provider: formData.get('provider'),
-      endpoint: formData.get('endpoint').trim(),
-      region: formData.get('region').trim() || 'Not specified',
-      status: 'Pending setup',
-      cpu: null,
-      memory: null,
-      updated: 'Waiting for first check',
-    }
-
     try {
-      const savedApplications = loadSavedApplications()
-      window.localStorage.setItem(APPLICATIONS_KEY, JSON.stringify([...savedApplications, application]))
-    } catch {
-      setAddError('Could not save this application in browser storage.')
-      toast.error('Could not save the application.')
+      const record = await createApplication({ name, url: formData.get('url').trim() })
+      setApplications((current) => [...current, mapApplication(record)])
+      setQuery('')
+      setAddError('')
+      setShowAddApplication(false)
+      onNavigate('/applications')
+      toast.success(`${name} added to Applications.`)
+    } catch (error) {
+      setAddError(error.message)
+      toast.error(error.message)
       return
     }
-
-    setApplications((current) => [...current, application])
-    setQuery('')
-    setAddError('')
-    setShowAddApplication(false)
-    onNavigate('/applications')
-    toast.success(`${name} added to Applications.`)
   }
 
-  function updateApplicationSettings(id, changes) {
-    const currentApplication = applications.find((application) => getApplicationId(application) === id)
-    const savedChanges = { ...changes }
-
-    if (changes.monitoringEnabled === false && !changes.status) {
-      savedChanges.status = currentApplication.status === 'Disconnected' ? 'Disconnected' : 'Monitoring disabled'
-      savedChanges.updated = 'Monitoring paused'
-    } else if (changes.monitoringEnabled === true && currentApplication.monitoringEnabled === false) {
-      savedChanges.status = 'Pending setup'
-      savedChanges.updated = 'Waiting for first check'
+  async function updateApplicationSettings(id, changes) {
+    const localPreferences = {
+      environment: changes.environment,
+      monitoringInterval: changes.monitoringInterval,
     }
-
     try {
-      const settings = loadApplicationSettings()
-      window.localStorage.setItem(APPLICATION_SETTINGS_KEY, JSON.stringify({ ...settings, [id]: { ...settings[id], ...savedChanges } }))
-      const savedApplications = loadSavedApplications().map((application) => getApplicationId(application) === id
-        ? { ...application, id, ...savedChanges }
-        : application)
-      window.localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(savedApplications))
+      const record = changes.monitoringEnabled === false
+        ? await disconnectApplicationRequest(id)
+        : await updateApplicationRequest(id, changes)
+      const preferences = loadApplicationSettings()
+      preferences[id] = { ...preferences[id], ...localPreferences }
+      window.localStorage.setItem(APPLICATION_SETTINGS_KEY, JSON.stringify(preferences))
+      setApplications((current) => current.map((application) => getApplicationId(application) === id
+        ? mapApplication(record, preferences[id])
+        : application))
+      return true
     } catch {
       return false
     }
-
-    setApplications((current) => current.map((application) => getApplicationId(application) === id
-      ? { ...application, id, ...savedChanges }
-      : application))
-    return true
   }
 
-  function disconnectApplication(id) {
-    return updateApplicationSettings(id, {
-      monitoringEnabled: false,
-      status: 'Disconnected',
-      updated: 'Monitoring disconnected',
-    })
-  }
-
-  function deleteApplication(id) {
+  async function disconnectApplication(id) {
     try {
-      const deletedIds = new Set(loadDeletedApplicationIds())
-      deletedIds.add(id)
-      window.localStorage.setItem(DELETED_APPLICATIONS_KEY, JSON.stringify([...deletedIds]))
-      window.localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(loadSavedApplications().filter((application) => getApplicationId(application) !== id)))
+      const record = await disconnectApplicationRequest(id)
+      const preferences = loadApplicationSettings()[id]
+      setApplications((current) => current.map((application) => getApplicationId(application) === id
+        ? mapApplication(record, preferences)
+        : application))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function deleteApplication(id) {
+    try {
+      await deleteApplicationRequest(id)
       const settings = loadApplicationSettings()
       delete settings[id]
       window.localStorage.setItem(APPLICATION_SETTINGS_KEY, JSON.stringify(settings))
@@ -376,9 +379,13 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
             <p className="inline-flex items-center gap-2 text-xs text-slate-500"><span className="size-2 rounded-full bg-emerald-400" /><FiCheckCircle className="text-emerald-400" />Monitoring active</p>
           </div>}
 
-          {selectedApplication && !applicationSettingsRoute ? (
+          {applicationsLoading && <div className="mb-6"><FeedbackState title="Loading applications..." variant="loading" /></div>}
+          {applicationsError && <div className="mb-6"><FeedbackState actionLabel="Retry" message={applicationsError} onAction={retryLoadingApplications} title="Could not load applications" variant="error" /></div>}
+          {!applicationsLoading && !applicationsError && applicationRoute && !selectedApplication && <FeedbackState title="Application not found" message="This application may have been removed or may not belong to your account." actionLabel="Back to applications" onAction={() => onNavigate('/applications')} variant="empty" />}
+
+          {!applicationsLoading && !applicationsError && selectedApplication && !applicationSettingsRoute ? (
             <ApplicationDetails application={selectedApplication} onBack={() => onNavigate('/applications')} onSettings={() => onNavigate(`/applications/${applicationId}/settings`)} />
-          ) : !selectedApplication && activePage !== 'Settings' && (
+          ) : !applicationsLoading && !applicationsError && !selectedApplication && !applicationRoute && activePage !== 'Settings' && (
             <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Metric label="Applications" value={applications.length} icon={FiGrid} tone="blue" />
               <Metric label="Healthy" value={healthyCount} icon={FiCheckCircle} tone="green" />
@@ -386,9 +393,9 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
             </div>
           )}
 
-          {!selectedApplication && activePage === 'Settings' ? (
+          {!applicationsLoading && !applicationsError && !selectedApplication && activePage === 'Settings' ? (
             <SettingsPage applications={applications} onSelectApplication={(application) => onNavigate(`/applications/${getApplicationId(application)}/settings`)} />
-          ) : selectedApplication && applicationSettingsRoute ? (
+          ) : !applicationsLoading && !applicationsError && selectedApplication && applicationSettingsRoute ? (
             <ApplicationSettings
               key={applicationId}
               application={selectedApplication}
@@ -398,7 +405,7 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
               onDisconnect={() => disconnectApplication(applicationId)}
               onDelete={() => deleteApplication(applicationId)}
             />
-          ) : !selectedApplication && (
+          ) : !applicationsLoading && !applicationsError && !selectedApplication && !applicationRoute && (
             <section aria-labelledby="applications-title">
               <div className="mb-4 grid gap-3 sm:flex sm:items-center sm:justify-between">
                 <h2 className="font-sans text-xl font-semibold text-white" id="applications-title">{activePage === 'Alerts' ? 'Applications needing attention' : 'Applications'}</h2>
@@ -429,18 +436,10 @@ export default function Dashboard({ path, onNavigate, onLogout }) {
               <label className="block text-sm font-medium text-slate-200" htmlFor="application-name">Application name
                 <input className="mt-1.5 h-11 w-full rounded-md border border-[#303647] bg-[#191d28] px-3 text-white outline-none focus:border-blue-500" id="application-name" name="name" placeholder="Payments API" required />
               </label>
-              <label className="block text-sm font-medium text-slate-200" htmlFor="application-provider">Hosting provider
-                <select className="mt-1.5 h-11 w-full rounded-md border border-[#303647] bg-[#191d28] px-3 text-white outline-none focus:border-blue-500" defaultValue="AWS" id="application-provider" name="provider">
-                  <option>AWS</option><option>Render</option><option>Vercel</option><option>Other</option>
-                </select>
+              <label className="block text-sm font-medium text-slate-200" htmlFor="application-url">Application URL
+                <input className="mt-1.5 h-11 w-full rounded-md border border-[#303647] bg-[#191d28] px-3 text-white outline-none focus:border-blue-500" id="application-url" name="url" placeholder="https://app.example.com" required type="url" />
               </label>
-              <label className="block text-sm font-medium text-slate-200" htmlFor="application-endpoint">Application URL or health endpoint
-                <input className="mt-1.5 h-11 w-full rounded-md border border-[#303647] bg-[#191d28] px-3 text-white outline-none focus:border-blue-500" id="application-endpoint" name="endpoint" placeholder="https://api.example.com/health" required type="url" />
-              </label>
-              <label className="block text-sm font-medium text-slate-200" htmlFor="application-region">Region <span className="font-normal text-slate-500">(optional)</span>
-                <input className="mt-1.5 h-11 w-full rounded-md border border-[#303647] bg-[#191d28] px-3 text-white outline-none focus:border-blue-500" id="application-region" name="region" placeholder="us-east-1" />
-              </label>
-              <p className="text-xs leading-5 text-slate-400">The app will be saved as Pending setup. Live health and performance checks require a monitoring backend.</p>
+              <p className="text-xs leading-5 text-slate-400">The application will be stored in your account. Live health, logs, and performance metrics need a monitoring connector.</p>
               {addError && <FeedbackState compact title={addError} variant="error" />}
               <div className="flex justify-end gap-2 pt-1">
                 <button className="h-10 rounded-md border border-[#303647] px-4 text-sm font-medium text-slate-300 hover:bg-[#202535]" onClick={() => setShowAddApplication(false)} type="button">Cancel</button>

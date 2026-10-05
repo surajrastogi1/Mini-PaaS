@@ -55,6 +55,15 @@ export async function loginUser(email, password) {
   return createSession(email, password)
 }
 
+export async function authenticatedRequest(path, options = {}) {
+  const session = getAuthSession()
+  if (!session) throw new Error('You are signed out. Please sign in again.')
+
+  const headers = new Headers(options.headers)
+  headers.set('Authorization', `${session.tokenType || 'bearer'} ${session.accessToken}`)
+  return request(path, { ...options, headers })
+}
+
 export async function registerUser({ name, email, password }) {
   await request('/auth/register', {
     method: 'POST',

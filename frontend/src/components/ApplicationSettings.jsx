@@ -11,29 +11,40 @@ export default function ApplicationSettings({ application, applicationId, onBack
   const [error, setError] = useState('')
   const [monitoringEnabled, setMonitoringEnabled] = useState(application.monitoringEnabled !== false)
   const [confirmation, setConfirmation] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    const didSave = onSave({
-      name: form.get('name').trim(),
-      environment: form.get('environment'),
-      monitoringEnabled: form.get('monitoringEnabled') === 'on',
-      monitoringInterval: Number(form.get('monitoringInterval')),
-    })
-    setSaved(didSave)
-    setError(didSave ? '' : 'Settings could not be saved in browser storage.')
-    if (didSave) toast.success('Application settings saved.')
-    else toast.error('Settings could not be saved.')
+    setSubmitting(true)
+    try {
+      const didSave = await onSave({
+        name: form.get('name').trim(),
+        url: form.get('url').trim(),
+        environment: form.get('environment'),
+        monitoringEnabled: form.get('monitoringEnabled') === 'on',
+        monitoringInterval: Number(form.get('monitoringInterval')),
+      })
+      setSaved(didSave)
+      setError(didSave ? '' : 'Settings could not be saved.')
+      if (didSave) toast.success('Application settings saved.')
+      else toast.error('Settings could not be saved.')
+    } catch (saveError) {
+      setSaved(false)
+      setError(saveError.message)
+      toast.error(saveError.message)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function confirmAction({ title, message, confirmLabel, action, successMessage, onSuccess, destructive }) {
     setConfirmation({ title, message, confirmLabel, action, successMessage, onSuccess, destructive })
   }
 
-  function handleConfirm() {
-    if (!confirmation.action()) {
-      setError('The application could not be updated in browser storage.')
+  async function handleConfirm() {
+    if (!await confirmation.action()) {
+      setError('The application could not be updated.')
       toast.error('The application could not be updated.')
       setConfirmation(null)
       return
@@ -57,6 +68,9 @@ export default function ApplicationSettings({ application, applicationId, onBack
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium text-slate-200" htmlFor="settings-app-name">Application name
               <input className={inputClass} defaultValue={application.name} id="settings-app-name" name="name" required />
+            </label>
+            <label className="block text-sm font-medium text-slate-200" htmlFor="settings-app-url">Application URL
+              <input className={inputClass} defaultValue={application.url} id="settings-app-url" name="url" required type="url" />
             </label>
             <label className="block text-sm font-medium text-slate-200" htmlFor="settings-app-id">Application ID
               <input className={`${inputClass} text-slate-400`} id="settings-app-id" readOnly value={applicationId} />
@@ -92,7 +106,7 @@ export default function ApplicationSettings({ application, applicationId, onBack
         <div className="flex flex-wrap items-center justify-end gap-3">
           {error && <FeedbackState compact message={error} title={error} variant="error" />}
           {!error && saved && <FeedbackState compact title="Settings saved." variant="success" />}
-          <button className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500" type="submit"><FiSave />Save settings</button>
+          <button className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-wait disabled:opacity-60" disabled={submitting} type="submit"><FiSave />{submitting ? 'Saving...' : 'Save settings'}</button>
         </div>
       </form>
 
